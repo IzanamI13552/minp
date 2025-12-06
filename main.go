@@ -1,11 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
-	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"time"
 )
 
 type User struct {
@@ -15,50 +15,38 @@ type User struct {
 
 func main() {
 
-	var name string
-	var result []User
-
-	data, err := os.ReadFile("user.json")
-	if err != nil {
-		if os.IsNotExist(err) {
-			result = []User{}
+	http.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		data, err := os.ReadFile("users.json")
+		if err != nil && !os.IsNotExist(err) {
+			http.Error(w, "Ошибка чтения файла", 500)
+			return
+		}
+		var users []User
+		if len(data) > 0 {
+			if err := json.Unmarshal(data, &users); err != nil {
+				http.Error(w, "Ошибка парсинга JSON", 500)
+				return
+			}
 		} else {
-			log.Fatalf("failed opening file: %s", err)
+			users = []User{}
 		}
-	} else {
-		err = json.Unmarshal(data, &result)
-		if err != nil {
-			log.Fatalf("failed unmarshalling file: %s", err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	})
+
+	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "pong"})
+	})
+
+	http.HandleFunc("/time", func(w http.ResponseWriter, r *http.Request) {
+		currentTime := map[string]string{
+			"time": time.Now().Format("2006-01-02 15:04:05"),
 		}
-	}
-	fmt.Print("Enter your name: ")
-	scaner := bufio.NewScanner(os.Stdin)
-	scaner.Scan()
-	name = scaner.Text()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(currentTime)
+	})
 
-	fmt.Print("Сохранено!")
-
-	fmt.Println("Все пользователи:")
-
-	newID := 1
-	if len(result) > 0 {
-		newID = result[len(result)-1].ID + 1
-	}
-
-	users := User{
-		ID:   newID,
-		Name: name,
-	}
-	result = append(result, users)
-
-	jsonData, err := json.MarshalIndent(result, "", "")
-	os.WriteFile("user.json", jsonData, 0644)
-	if err != nil {
-		log.Fatalf("failed opening file: %s", err)
-	}
-
-	for _, u := range result {
-		fmt.Printf("%d - %s\n", u.ID, u.Name)
-	}
-
+	log.Println("Server started on :8080")
+	http.ListenAndServe(":8080", nil)
 }
